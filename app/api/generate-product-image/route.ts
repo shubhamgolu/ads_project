@@ -11,6 +11,7 @@ Ensure the product is sharp and in focus, with motion and energy conveyed throug
   "textToImage": "detailed image generation prompt here",
   "imageToVideo": "detailed image-to-video animation prompt here"
 }`
+
 export async function POST(req:NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File;
@@ -49,77 +50,74 @@ export async function POST(req:NextRequest) {
     console.log(imageKitRef.url);
 
     // Generate Product Image Prompt using ChatGpt
-     const response = await clientOpenAi.responses.create({
+    const response = await clientOpenAi.responses.create({
       model: "gpt-4.1-mini",
       input: [
         { 
             role: 'user', 
             content: [
-               
                 {
-                type: "input_text",
-                text: PROMPT
+                    type: "input_text",
+                    text: PROMPT
                 },
-                 // @ts-ignore
                 {
                     type: "input_image",
-                    image_url: imageKitRef.url
+                    image_url: imageKitRef.url,
+                    detail: "auto"  // Add this required field
                 }
             ]
          },
       ],
     });
 
-const textOutput=response.output_text?.trim();
+    const textOutput = response.output_text?.trim();
     let json = JSON.parse(textOutput);
-//   return NextResponse.json(json)
-
+    
     // Generate Image Product
     const ImageResponse = await clientOpenAiImage.responses.create({
-          model: "gpt-4.1-mini",
-          max_output_tokens: 500,
-          input: [
-        { 
-            role: 'user', 
-            content: [
-              
-                {
-                type: "input_text",
-                  // @ts-ignore
-                text: json?.textToImage
-                },
-                 // @ts-ignore
-                {
-                    type: "input_image",
-                    image_url: imageKitRef.url
-                }
-            ]
-         },
-      ],
-      tools:[{type:"image_generation"}]
-
+        model: "gpt-4.1-mini",
+        max_output_tokens: 500,
+        input: [
+            { 
+                role: 'user', 
+                content: [
+                    {
+                        type: "input_text",
+                        text: json?.textToImage
+                    },
+                    {
+                        type: "input_image",
+                        image_url: imageKitRef.url,
+                        detail: "low"  // This is correct now
+                    }
+                ]
+            },
+        ],
+        tools: [{type: "image_generation"}]
     })
-     console.log(ImageResponse.output);
+    
+    console.log(ImageResponse.output);
     const imageData = ImageResponse.output?.
-    filter((item:any) => item.type === "image_generation_call")
-    .map((item:any) => item.result)
+        filter((item: any) => item.type === "image_generation_call")
+        .map((item: any) => item.result)
 
-    const generatedImage = imageData[0];// base64 encoded image
+    const generatedImage = imageData[0]; // base64 encoded image
    
-    //  Upload Generated Image to Imagekit
+    // Upload Generated Image to Imagekit
     const uploadResult = await imagekit.upload({
-        file :`data:image/png;base64,${generatedImage}`,
-        fileName:`Generated-${Date.now()}.png`,
+        file: `data:image/png;base64,${generatedImage}`,
+        fileName: `Generated-${Date.now()}.png`,
         isPublished: true
     })
 
     // Update Document
-    await  updateDoc(doc(db, 'user-ads', docId), {
-         finalProductImageUrl:uploadResult.url, // finalProcutImage
-         productImageUrl :imageKitRef.url, // productImage
-         status:"completed",
-         userInfo:userInfo?.credits - 5,
-         imageToVideoPrompt:json?.imageToVideo// imageToVideo
+    await updateDoc(doc(db, 'user-ads', docId), {
+        finalProductImageUrl: uploadResult.url,
+        productImageUrl: imageKitRef.url,
+        status: "completed",
+        userInfo: userInfo?.credits - 5,
+        imageToVideoPrompt: json?.imageToVideo
     })
-return NextResponse.json(uploadResult)
+    
+    return NextResponse.json(uploadResult)
 }
